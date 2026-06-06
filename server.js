@@ -8,7 +8,7 @@ app.use(express.json());
 // A simple in-memory database. 
 // In the future, replace this with MongoDB or Supabase so data survives server restarts.
 const users = {
-  "TRIAL_KEY_001": { betCount: 0, totalWins: 0, totalPnL: 0, baseBet: 0.15, maxBets: 200 }
+  "TRIAL_KEY_001": { betCount: 0, totalWins: 0, totalPnL: 0, baseBet: 0.0001, maxBets: 200 }
 };
 
 app.post('/api/next-bet', (req, res) => {
