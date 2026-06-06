@@ -6,7 +6,7 @@ app.use(cors());
 app.use(express.json());
 
 const users = {
-  "TRIAL_KEY_001": { betCount: 0, totalWins: 0, totalPnL: 0, baseBet: 0.0001, maxBets: 200 }
+  "TRIAL_KEY_001": { betCount: 0, totalWins: 0, totalPnL: 0, baseBet: 0.01, maxBets: 200 }
 };
 
 app.post('/api/next-bet', (req, res) => {
