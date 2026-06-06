@@ -5,8 +5,6 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// A simple in-memory database. 
-// In the future, replace this with MongoDB or Supabase so data survives server restarts.
 const users = {
   "TRIAL_KEY_001": { betCount: 0, totalWins: 0, totalPnL: 0, baseBet: 0.0001, maxBets: 200 }
 };
@@ -15,7 +13,6 @@ app.post('/api/next-bet', (req, res) => {
   const { key, lastResult, lastProfit, lastBet } = req.body;
   const user = users[key];
 
-  // 1. Validate User Key
   if (!user) {
     return res.status(401).json({ error: "Invalid License Key." });
   }
@@ -25,8 +22,7 @@ app.post('/api/next-bet', (req, res) => {
     user.totalWins += lastProfit;
     user.totalPnL += lastProfit;
   } else if (lastResult === "loss") {
-    user.totalWins = 0; // Reset streak
-    user.totalPnL -= lastBet;
+    user.totalPnL -= lastBet; 
   }
 
   // 3. Check Trial Limit
@@ -34,11 +30,12 @@ app.post('/api/next-bet', (req, res) => {
     return res.json({ expired: true, message: "Trial limit of 200 bets reached." });
   }
 
-  // 4. Calculate the NEXT bet using your secret 50% reverse logic
+  // 4. Calculate the NEXT bet to recover 50% of the total loss
   let currentBet = user.baseBet;
-  if (user.totalWins > 0) {
-    currentBet = user.totalWins * 0.5;
+  if (user.totalPnL < 0) {
+    currentBet = Math.abs(user.totalPnL) * 0.5; 
   }
+  
   if (currentBet < user.baseBet) {
     currentBet = user.baseBet;
   }
@@ -47,13 +44,11 @@ app.post('/api/next-bet', (req, res) => {
   const rawTarget = (Math.random() * 5) + 3;
   const currentPayout = (rawTarget * 0.98).toFixed(2);
 
-  // Increment their bet counter
   user.betCount++;
 
-  // Send the instructions back to the buyer's script
   res.json({
     expired: false,
-    betAmount: currentBet,
+    betAmount: Number(currentBet.toFixed(4)),
     targetPayout: currentPayout,
     pnl: user.totalPnL,
     wins: user.totalWins,
