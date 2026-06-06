@@ -21,6 +21,8 @@ app.post('/api/next-bet', (req, res) => {
   if (lastResult === "win") {
     user.totalWins += lastProfit;
     user.totalPnL += lastProfit;
+    // RESET LOGIC: Once we win, we clear the PnL/Loss tracker to reset the bet
+    user.totalPnL = 0; 
   } else if (lastResult === "loss") {
     user.totalPnL -= lastBet; 
   }
@@ -30,7 +32,8 @@ app.post('/api/next-bet', (req, res) => {
     return res.json({ expired: true, message: "Trial limit of 200 bets reached." });
   }
 
-  // 4. Calculate the NEXT bet to recover 50% of the total loss
+  // 4. Calculate the NEXT bet
+  // If PnL is 0 or positive, use baseBet. If negative, calculate recovery.
   let currentBet = user.baseBet;
   if (user.totalPnL < 0) {
     currentBet = Math.abs(user.totalPnL) * 0.5; 
@@ -40,7 +43,6 @@ app.post('/api/next-bet', (req, res) => {
     currentBet = user.baseBet;
   }
 
-  // Calculate random target between 3 and 8
   const rawTarget = (Math.random() * 5) + 3;
   const currentPayout = (rawTarget * 0.98).toFixed(2);
 
