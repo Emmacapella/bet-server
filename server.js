@@ -9,7 +9,8 @@ app.use(express.json());
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
 app.post('/api/next-bet', async (req, res) => {
-  const { key, lastResult, lastProfit, lastBet } = req.body;
+  // Added 'balance' to the destructured body parameters
+  const { key, lastResult, lastProfit, lastBet, balance } = req.body;
 
   let { data: user, error } = await supabase.from('keys').select('*').eq('key', key).single();
   if (error || !user) return res.status(401).json({ error: "Invalid License Key." });
@@ -32,14 +33,22 @@ app.post('/api/next-bet', async (req, res) => {
     accumulatedProfit -= lastBet; 
   }
 
-  let currentBet = 0.0001; 
+  // DYNAMIC RISK MANAGEMENT: Base bet is strictly 0.1% of current balance
+  const parsedBalance = Number(balance) || 0;
+  let dynamicBaseBet = parsedBalance * 0.001; 
+  if (dynamicBaseBet <= 0) dynamicBaseBet = 0.0001; // absolute safety floor fallback
+
+  // Calculate the NEXT bet amount using the dynamic base bet
+  let currentBet = dynamicBaseBet; 
   if (newPnL < 0) {
     currentBet = Math.abs(newPnL) * 0.5; 
   }
-  if (currentBet < 0.0001) currentBet = 0.0001;
+  
+  // Ensure the bet does not accidentally drop below our calculated 0.1% floor
+  if (currentBet < dynamicBaseBet) currentBet = dynamicBaseBet;
 
   const rawTarget = (Math.random() * 5) + 3;
-  const currentPayout = (rawTarget * 0.98).toFixed(2);
+  const currentPayout = (rawTarget * 0.98).toFixed(4); // Keep accuracy match
 
   const nextBetCount = user.bet_count + 1;
   await supabase.from('keys').update({ 
@@ -50,7 +59,7 @@ app.post('/api/next-bet', async (req, res) => {
 
   res.json({
     expired: false,
-    betAmount: Number(currentBet.toFixed(4)),
+    betAmount: Number(currentBet.toFixed(6)), // higher decimal precision for smaller balance ratios
     targetPayout: currentPayout,
     pnl: newPnL,
     betsPlaced: nextBetCount,
