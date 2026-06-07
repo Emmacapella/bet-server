@@ -1,60 +1,60 @@
 const express = require('express');
 const cors = require('cors');
-const app = express();
+const { createClient } = require('@supabase/supabase-js');
 
+const app = express();
 app.use(cors());
 app.use(express.json());
 
-const users = {
-  "TRIAL_KEY_001": { betCount: 0, totalWins: 0, totalPnL: 0, baseBet: 0.01, maxBets: 200 }
-};
+// Secure connection to Supabase via Render Environment Variables
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
-app.post('/api/next-bet', (req, res) => {
+app.post('/api/next-bet', async (req, res) => {
   const { key, lastResult, lastProfit, lastBet } = req.body;
-  const user = users[key];
 
-  if (!user) {
-    return res.status(401).json({ error: "Invalid License Key." });
+  // 1. Fetch user/key record from Supabase
+  let { data: user, error } = await supabase.from('keys').select('*').eq('key', key).single();
+  if (error || !user) return res.status(401).json({ error: "Invalid License Key." });
+
+  // 2. Check Expiry/Trial Limit (Max 200 bets)
+  if (user.bet_count >= user.max_bets) {
+    return res.json({ expired: true, message: `Trial limit of ${user.max_bets} bets reached.` });
   }
 
-  // 2. Process the previous bet's outcome
+  // 3. Process the outcome & update PnL
+  let newPnL = user.total_pnl;
   if (lastResult === "win") {
-    user.totalWins += lastProfit;
-    user.totalPnL += lastProfit;
-    // RESET LOGIC: Once we win, we clear the PnL/Loss tracker to reset the bet
-    user.totalPnL = 0; 
+    newPnL = 0; // Reset back to base bet tracking after a win
   } else if (lastResult === "loss") {
-    user.totalPnL -= lastBet; 
+    newPnL -= lastBet; // Accumulate the loss
   }
 
-  // 3. Check Trial Limit
-  if (user.betCount >= user.maxBets) {
-    return res.json({ expired: true, message: "Trial limit of 200 bets reached." });
+  // 4. Calculate the NEXT bet amount based on your recovery math
+  let currentBet = 0.0001; // Default baseBet
+  if (newPnL < 0) {
+    currentBet = Math.abs(newPnL) * 0.5; // Bet 50% of total loss to recover
   }
+  if (currentBet < 0.0001) currentBet = 0.0001;
 
-  // 4. Calculate the NEXT bet
-  // If PnL is 0 or positive, use baseBet. If negative, calculate recovery.
-  let currentBet = user.baseBet;
-  if (user.totalPnL < 0) {
-    currentBet = Math.abs(user.totalPnL) * 0.5; 
-  }
-  
-  if (currentBet < user.baseBet) {
-    currentBet = user.baseBet;
-  }
-
+  // Calculate target payout multiplier
   const rawTarget = (Math.random() * 5) + 3;
   const currentPayout = (rawTarget * 0.98).toFixed(2);
 
-  user.betCount++;
+  // 5. Update data back into Supabase
+  const nextBetCount = user.bet_count + 1;
+  await supabase.from('keys').update({ 
+    bet_count: nextBetCount, 
+    total_pnl: newPnL 
+  }).eq('key', key);
 
+  // 6. Return response to your Tampermonkey script
   res.json({
     expired: false,
     betAmount: Number(currentBet.toFixed(4)),
     targetPayout: currentPayout,
-    pnl: user.totalPnL,
-    wins: user.totalWins,
-    betsRemaining: user.maxBets - user.betCount
+    pnl: newPnL,
+    betsPlaced: nextBetCount,
+    betsRemaining: user.max_bets - nextBetCount
   });
 });
 
